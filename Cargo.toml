@@ -1,0 +1,13 @@
+[package]
+name = "tegrastats-tui"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Nvidia jetson nano tegrastats tui interface"
+repository = "https://github.com/ishrut/tegrastats-tui.git"
+keywords = ["tegrastats", "tui", "jetson nano"]
+
+[dependencies]
+crossterm = "0.29.0"
+nom = "8.0.0"
+ratatui = "0.29.0"
