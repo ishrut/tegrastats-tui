@@ -18,5 +18,5 @@ cargo build
 ## Installation
 
 ```bash
-cargo install
+cargo install tegrastats-tui
 ```
