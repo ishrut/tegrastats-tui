@@ -5,6 +5,8 @@ edition = "2024"
 license = "MIT"
 description = "Nvidia jetson nano tegrastats tui interface"
 repository = "https://github.com/ishrut/tegrastats-tui.git"
+homepage = "https://github.com/ishrut/tegrastats-tui.git"
+readme = "README.md"
 keywords = ["tegrastats", "tui", "jetson nano"]
 
 [dependencies]
