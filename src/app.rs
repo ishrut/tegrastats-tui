@@ -5,7 +5,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{
     DefaultTerminal, Frame,
     style::{Stylize, Color},
-    widgets::{Gauge, Paragraph, Block, Borders},
+    widgets::{Gauge, Paragraph, Block},
     layout::{Layout, Constraint, Alignment},
 };
 
@@ -72,77 +72,49 @@ impl App {
             footer_area,
         );
 
-        let middle_layout = Layout::vertical([Length(3), Length(3), Length(3), Length(3), Length(4), Length(3), Length(3), Length(4)]);
-        let [upper_cpu_area, lower_cpu_area,  ram_area, swap_area, lfb_area, emc_area, gr3d_area, temp_area] = middle_layout.areas(middle_area);
+        let cpu_rows = self.tegrastats.cpus.len().div_ceil(2).max(1);
+        let temp_rows = self.tegrastats.temps.len().div_ceil(3).max(1);
 
-        let upper_cpu_layout = Layout::horizontal([Ratio(1,2); 2]);
-        let [cpu0_area, cpu1_area] = upper_cpu_layout.areas(upper_cpu_area);
+        let mut middle_constraints = vec![Length(3); cpu_rows];
+        middle_constraints.extend([Length(3), Length(3), Length(4)]);
+        if self.tegrastats.emc_freq.is_some() {
+            middle_constraints.push(Length(3));
+        }
+        middle_constraints.extend([Length(3), Length(temp_rows as u16 + 2)]);
+        let middle_areas = Layout::vertical(middle_constraints).split(middle_area);
+        let (cpu_row_areas, rest) = middle_areas.split_at(cpu_rows);
+        let mut rest = rest.iter().copied();
+        let ram_area = rest.next().unwrap();
+        let swap_area = rest.next().unwrap();
+        let lfb_area = rest.next().unwrap();
+        let emc_area = self.tegrastats.emc_freq.map(|_| rest.next().unwrap());
+        let gr3d_area = rest.next().unwrap();
+        let temp_area = rest.next().unwrap();
 
-        let cpu0_layout = Layout::horizontal([Min(0), Length(7)]);
-        let [cpu0_bar_area, cpu0_freq_area] = cpu0_layout.areas(cpu0_area);
+        for (i, cpu) in self.tegrastats.cpus.iter().enumerate() {
+            let [left, right] = Layout::horizontal([Ratio(1,2); 2]).areas(cpu_row_areas[i / 2]);
+            let cpu_area = if i % 2 == 0 { left } else { right };
 
-        frame.render_widget(
-        Gauge::default()
-            .block(Block::bordered().title("cpu0 "))
-            .gauge_style(Color::Gray)
-            .percent(self.tegrastats.cpu0_load as u16),
-            cpu0_bar_area
-        );
-        frame.render_widget(
-            Paragraph::new(format!("\n{}MHz", self.tegrastats.cpu0_freq))
-            .alignment(Alignment::Center),
-            cpu0_freq_area
-        );
+            let cpu_layout = Layout::horizontal([Min(0), Length(7)]);
+            let [cpu_bar_area, cpu_freq_area] = cpu_layout.areas(cpu_area);
 
-        let cpu1_layout = Layout::horizontal([Min(0), Length(7)]);
-        let [cpu1_bar_area, cpu1_freq_area] = cpu1_layout.areas(cpu1_area);
-        frame.render_widget(
-        Gauge::default()
-            .block(Block::bordered().title("cpu1 "))
-            .gauge_style(Color::Gray)
-            .percent(self.tegrastats.cpu1_load as u16),
-            cpu1_bar_area
-        );
-        frame.render_widget(
-            Paragraph::new(format!("\n{}MHz", self.tegrastats.cpu1_freq))
-            .alignment(Alignment::Center),
-            cpu1_freq_area
-        );
-
-        //
-        let lower_cpu_layout = Layout::horizontal([Ratio(1,2); 2]);
-        let [cpu2_area, cpu3_area] = lower_cpu_layout.areas(lower_cpu_area);
-        //
-        let cpu2_layout = Layout::horizontal([Min(0), Length(7)]);
-        let [cpu2_bar_area, cpu2_freq_area] = cpu2_layout.areas(cpu2_area);
-        //
-        frame.render_widget(
-        Gauge::default()
-            .block(Block::bordered().title("cpu2 "))
-            .gauge_style(Color::Gray)
-            .percent(self.tegrastats.cpu2_load as u16),
-            cpu2_bar_area
-        );
-        frame.render_widget(
-            Paragraph::new(format!("\n{}MHz", self.tegrastats.cpu2_freq))
-            .alignment(Alignment::Center),
-            cpu2_freq_area
-        );
-
-        let cpu3_layout = Layout::horizontal([Min(0), Length(7)]);
-        let [cpu3_bar_area, cpu3_freq_area] = cpu3_layout.areas(cpu3_area);
-        frame.render_widget(
-        Gauge::default()
-            .block(Block::bordered().title("cpu3 "))
-            .gauge_style(Color::Gray)
-            .percent(self.tegrastats.cpu3_load as u16),
-            cpu3_bar_area
-        );
-        frame.render_widget(
-            Paragraph::new(format!("\n{}MHz", self.tegrastats.cpu3_freq))
-            .alignment(Alignment::Center),
-            cpu3_freq_area
-        );
+            let (load, freq) = match cpu {
+                Some(cpu) => (cpu.load, format!("{}MHz", cpu.freq)),
+                None => (0, "off".to_string()),
+            };
+            frame.render_widget(
+            Gauge::default()
+                .block(Block::bordered().title(format!("cpu{} ", i)))
+                .gauge_style(Color::Gray)
+                .percent(load.min(100) as u16),
+                cpu_bar_area
+            );
+            frame.render_widget(
+                Paragraph::new(format!("\n{}", freq))
+                .alignment(Alignment::Center),
+                cpu_freq_area
+            );
+        }
 
         let ram_layout = Layout::horizontal([Min(0), Length(20)]);
         let [ram_bar_area, ram_info_area] = ram_layout.areas(ram_area);
@@ -191,73 +163,37 @@ impl App {
             lfb_area
         );
 
-        frame.render_widget(
-        Gauge::default()
-            .block(Block::bordered().title("EMC"))
-            .gauge_style(Color::Gray)
-            .percent(self.tegrastats.emc_freq as u16),
-            emc_area
-        );
+        if let (Some(emc_freq), Some(emc_area)) = (self.tegrastats.emc_freq, emc_area) {
+            frame.render_widget(
+            Gauge::default()
+                .block(Block::bordered().title("EMC"))
+                .gauge_style(Color::Gray)
+                .percent(emc_freq.min(100) as u16),
+                emc_area
+            );
+        }
 
         frame.render_widget(
         Gauge::default()
             .block(Block::bordered().title("GR3D"))
             .gauge_style(Color::Gray)
-            .percent(self.tegrastats.gr3d_freq as u16),
+            .percent(self.tegrastats.gr3d_freq.min(100) as u16),
             gr3d_area
         );
 
-        let temp_vertical_layout = Layout::vertical([Ratio(1,2); 2]);
-        let [upper_temp_area, lower_temp_area] = temp_vertical_layout.areas(temp_area);
+        let temp_block = Block::bordered().title("Temp");
+        let temp_inner_area = temp_block.inner(temp_area);
+        frame.render_widget(temp_block, temp_area);
 
-        let temp_upper_layout = Layout::horizontal([Ratio(1, 3); 3]);
-        let [pll_temp_area, cpu_temp_area, pmic_temp_area] = temp_upper_layout.areas(upper_temp_area);
-
-        let temp_lower_layout = Layout::horizontal([Ratio(1,3); 3]);
-        let [gpu_temp_area, ao_temp_area, thermal_temp_area] = temp_lower_layout.areas(lower_temp_area);
-
-        frame.render_widget(
-            Paragraph::new(format!("pll temp: {}", self.tegrastats.pll_temp))
-            .alignment(Alignment::Left)
-            .block(Block::bordered().title("Temp").borders(Borders::LEFT | Borders::TOP)),
-            pll_temp_area
-        );
-
-        frame.render_widget(
-            Paragraph::new(format!("cpu temp: {}", self.tegrastats.cpu_temp))
-            .alignment(Alignment::Left)
-            .block(Block::bordered().borders(Borders::TOP)),
-            cpu_temp_area
-        );
-
-        frame.render_widget(
-            Paragraph::new(format!("pmic temp: {}", self.tegrastats.pmic_temp))
-            .alignment(Alignment::Left)
-            .block(Block::bordered().borders(Borders::TOP | Borders::RIGHT)),
-            pmic_temp_area
-        );
-
-        frame.render_widget(
-            Paragraph::new(format!("gpu temp: {}", self.tegrastats.gpu_temp))
-            .alignment(Alignment::Left)
-            .block(Block::bordered().borders(Borders::BOTTOM | Borders::LEFT)),
-            gpu_temp_area
-        );
-
-        frame.render_widget(
-            Paragraph::new(format!("ao temp: {}", self.tegrastats.ao_temp))
-            .alignment(Alignment::Left)
-            .block(Block::bordered().borders(Borders::BOTTOM)),
-            ao_temp_area
-        );
-
-        frame.render_widget(
-            Paragraph::new(format!("thermal temp: {}", self.tegrastats.thermal_temp))
-            .alignment(Alignment::Left)
-            .block(Block::bordered().borders(Borders::BOTTOM | Borders::RIGHT)),
-            thermal_temp_area
-        );
-
+        let temp_row_areas = Layout::vertical(vec![Length(1); temp_rows]).split(temp_inner_area);
+        for (i, (name, temp)) in self.tegrastats.temps.iter().enumerate() {
+            let temp_cells = Layout::horizontal([Ratio(1,3); 3]).split(temp_row_areas[i / 3]);
+            frame.render_widget(
+                Paragraph::new(format!("{} temp: {}", name, temp))
+                .alignment(Alignment::Left),
+                temp_cells[i % 3]
+            );
+        }
     }
 
     fn handle_crossterm_events(&mut self) -> Result<(), Box<dyn std::error::Error>> {

@@ -1,7 +1,7 @@
 # tegrastats-tui
 
 This is a simple tui application that parses the output of tegrastats from nvidia jetson nano and displays the data in a tui.
-It's tested on my nvidia jetson nano only. The parser wouldn't be able to parse more than 4 CPU cores.
+It's tested on my nvidia jetson nano only. Any number of CPU cores is supported, and it also works with the newer tegrastats output on Jetson Orin boards.
 If you are interested in a richer terminal interface and featureful check out: https://github.com/rbonghi/jetson_stats
 
 ## Dependencies
